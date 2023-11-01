@@ -271,5 +271,7 @@ def extract_unexecuted(df: pd.DataFrame, despreciable_amount: int) -> list[str]:
 
         if abs(investment_diff) <= despreciable_amount:
             unexecuted_ids.add(group_key)
+        elif df_group['Descripción'].str.startswith('Devolución de fondos por crédito no concretado').any():
+            unexecuted_ids.add(group_key)
 
     return list(unexecuted_ids)
