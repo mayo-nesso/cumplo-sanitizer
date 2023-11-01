@@ -7,7 +7,7 @@ fix_data = [
     ['27761', 'Comercial 2050', '2016-Nov-11', (512505 - 502636), 0],
     ['28106', 'avendaño y aranda', '2016-May-05', (552636), 0], #  ==> late payment with garantee
     ['28948', 'ingecom', '2016-Dec-20', (523218 - 266189), 0],
-    ['29515', 'abratec', '2017-May-17', (526314 - 286030), 0],
+    ['29515', 'abratec', '2017-May-17', (526314 - 268030), 0],
     ['29597', 'hurtado bombeo de hormigon', '2016-12-22', (503075), 0], # >> not executed & 'not returned' on records
     ['29602', 'IC FENIX', '2017-04-12', (519536-393921), 0],
     ['29933', 'teur chile spa', '2017-06-30', (523371-397112), 0],
