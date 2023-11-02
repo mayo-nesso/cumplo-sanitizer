@@ -5,7 +5,7 @@ from typing import Optional
 import ipywidgets as widgets
 import openpyxl
 import pandas as pd
-from IPython.display import clear_output, display
+from IPython.display import display
 from pyxirr import InvalidPaymentsError, xirr
 
 
@@ -125,70 +125,64 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
     index_text.layout.display = "none"
     index_text.value = 0
 
-    widgets.jslink((index_text, "value"), (id_slider, "value"))
-
-    out = widgets.Output()
-
     def on_next_button_clicked(_):
         index_text.value = (index_text.value + 1) % len(r_ids)
-        id_slider.value = index_text.value
-        refresh_df(index_text.value)
 
     def on_prev_button_clicked(_):
         index_text.value = (index_text.value - 1 + len(r_ids)) % len(r_ids)
-        id_slider.value = index_text.value
-        refresh_df(index_text.value)
 
-    def refresh_out(_):
-        refresh_df(index_text.value)
-
-    def refresh_df(index_text_value):
-        r_id = r_ids[index_text_value]
-
-        with out:
-            # what happens when we press the button
-            clear_output()
-            labl_id.value = f"RemateID: [{r_id}], Index: [{index_text.value}/{len(r_ids)-1}]"
-            selected_group = dfg.get_group(r_id)
-            # Show!
-            sorted_values = selected_group.sort_values(by="Fecha", ascending=True)
-            display(sorted_values)
-            # Amounts !
-            tot_earnings = sorted_values["Abono"].sum()
-            tot_charges = sorted_values["Cargo"].sum()
-            tot = tot_earnings - tot_charges
-            labl_amounts.value = (
-                f"Earnings [{tot_earnings:,}] Charges [{tot_charges:,}]; delta: [{tot:,}]"
-            )
-            # Get rates!
-            diff_days, mtasa_iir, tasa_iir_yr, tasa_xir = get_rates(selected_group)
-
-            # and display them!
-            result_label = f"Days:[{diff_days}]"
-            result_label += f" - Rate : [{mtasa_iir * 100:.2f}%]" if mtasa_iir is not None else ""
-            result_label += f", Yr [{tasa_iir_yr * 100:.2f}%]" if tasa_iir_yr else ""
-            result_label += f"- TIR: [{tasa_xir * 100:.2f}%]" if tasa_xir else ""
-            labl_stats.value = result_label
-
+    widgets.jslink((index_text, "value"), (id_slider, "value"))
     # linking button and function together using a button's method
     prev_button.on_click(on_prev_button_clicked)
     next_button.on_click(on_next_button_clicked)
 
-    id_slider.observe(refresh_out, "value")
-    # displaying button and its output together
+    df_wrapper = widgets.Output()
 
-    refresh_out(None)
+    def _interactive_df(index_text_value):
+        # Get investment r_id!
+        r_id = r_ids[index_text_value]
+        # and display it!
+        labl_id.value = f"RemateID: [{r_id}], Index: [{index_text_value}/{len(r_ids)-1}]"
+        
+        # Get selected investment r_id!
+        selected_group = dfg.get_group(r_id)
+        sorted_values = selected_group.sort_values(by="Fecha", ascending=True)
+        # and display them!
+        df_wrapper.clear_output()
+        df_wrapper.append_display_data(sorted_values)
+        
+        # Get Earnings, Charges and diff amounts!
+        tot_earnings = sorted_values["Abono"].sum()
+        tot_charges = sorted_values["Cargo"].sum()
+        diff = tot_earnings - tot_charges
+        # and display them!
+        labl_amounts.value = (
+            f"Earnings [{tot_earnings:,}] Charges [{tot_charges:,}]; delta: [{diff:,}]"
+        )
+
+        # Get rates!
+        diff_days, mtasa_iir, tasa_iir_yr, tasa_xir = get_rates(selected_group)
+        # and display them!
+        result_label = f"Days:[{diff_days}]"
+        result_label += f" - Rate : [{mtasa_iir * 100:.2f}%]" if mtasa_iir is not None else ""
+        result_label += f", Yr [{tasa_iir_yr * 100:.2f}%]" if tasa_iir_yr else ""
+        result_label += f"- TIR: [{tasa_xir * 100:.2f}%]" if tasa_xir else ""
+        labl_stats.value = result_label
+        
     display(
         widgets.VBox(
             [
                 widgets.HBox([prev_button, next_button, id_slider, labl_id]),
                 labl_amounts,
                 labl_stats,
-                out,
+                df_wrapper,
                 index_text,
             ]
         )
     )
+
+    
+    widgets.interact(_interactive_df, index_text_value=index_text)
 
 
 # Analize flows file line by line, and extract: active, late, and uncollectible ids
