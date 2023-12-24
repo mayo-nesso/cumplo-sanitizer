@@ -143,14 +143,14 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
         r_id = r_ids[index_text_value]
         # and display it!
         labl_id.value = f"RemateID: [{r_id}], Index: [{index_text_value}/{len(r_ids)-1}]"
-        
+
         # Get selected investment r_id!
         selected_group = dfg.get_group(r_id)
         sorted_values = selected_group.sort_values(by="Fecha", ascending=True)
         # and display them!
         df_wrapper.clear_output()
         df_wrapper.append_display_data(sorted_values)
-        
+
         # Get Earnings, Charges and diff amounts!
         tot_earnings = sorted_values["Abono"].sum()
         tot_charges = sorted_values["Cargo"].sum()
@@ -168,7 +168,7 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
         result_label += f", Yr [{tasa_iir_yr * 100:.2f}%]" if tasa_iir_yr else ""
         result_label += f"- TIR: [{tasa_xir * 100:.2f}%]" if tasa_xir else ""
         labl_stats.value = result_label
-        
+
     display(
         widgets.VBox(
             [
@@ -181,7 +181,6 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
         )
     )
 
-    
     widgets.interact(_interactive_df, index_text_value=index_text)
 
 
@@ -191,7 +190,7 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
 # uncollectible are all those investments that have a pending flow older than 'grace_period_days'
 def extract_active_and_late_ids(
     flows_file_path: str, grace_period_days
-) -> (list[str], list[str], list[str]):
+) -> (list[str], list[str], list[str], list[str]):
     # Colors and meaning !!
     c_red = "FFCE494F"  # red | pending!!
     c_gray = "FF808080"  # gray | expected, future payment
@@ -200,6 +199,11 @@ def extract_active_and_late_ids(
 
     workbook = openpyxl.load_workbook(flows_file_path, data_only=True)
     sheet = workbook.active
+
+    # Store all ids on document.
+    # Some investment that are recently payed could not be registered here,
+    # so we will have to know what ids exist in the dococument
+    all_ids = set()
 
     # Get those that are currentlty active and on track
     # ie, it has 'future payments' => *grey* cells!
@@ -231,6 +235,9 @@ def extract_active_and_late_ids(
             # get row-investment_id
             id = str(sheet.cell(row=row, column=1).value)
 
+            # store this id in the all_ids set...
+            all_ids.add(id)
+
             # Some payment for the future => Currently active
             if font_color.rgb == c_gray:
                 active_ids.add(id)
@@ -250,11 +257,11 @@ def extract_active_and_late_ids(
     # Close file!
     workbook.close()
     # return elements as lists
-    return (list(active_ids), list(late_ids), list(uncollectible_ids))
+    return (list(all_ids), list(active_ids), list(late_ids), list(uncollectible_ids))
 
 
 # Extract all those ids where the diff of Abonos and Cargos is less or equal than 'despreciable_amount'
-def extract_unexecuted(df: pd.DataFrame, despreciable_amount: int) -> list[str]:
+def extract_unexecuted(df: pd.DataFrame, not_present_in_flows_ids: list[str], despreciable_amount: int) -> list[str]:
     dfg = df.groupby("RemateID")
 
     unexecuted_ids = set()
@@ -263,9 +270,30 @@ def extract_unexecuted(df: pd.DataFrame, despreciable_amount: int) -> list[str]:
         cost = df_group["Cargo"].sum()
         investment_diff = earnings - cost
 
-        if abs(investment_diff) <= despreciable_amount:
+        if abs(investment_diff) <= despreciable_amount or group_key in not_present_in_flows_ids:
             unexecuted_ids.add(group_key)
-        elif df_group['Descripción'].str.startswith('Devolución de fondos por crédito no concretado').any():
+        elif (
+            df_group["Descripción"]
+            .str.startswith("Devolución de fondos por crédito no concretado")
+            .any()
+        ):
             unexecuted_ids.add(group_key)
 
     return list(unexecuted_ids)
+
+
+
+def extract_just_payed(df: pd.DataFrame, not_present_in_flows_ids: list[str], considerable_amount: int) -> list[str]:
+    dfg = df.groupby("RemateID")
+
+    just_payed = set()
+    for group_key, df_group in dfg:
+        earnings = df_group["Abono"].sum()
+        cost = df_group["Cargo"].sum()
+        investment_diff = earnings - cost
+
+        if investment_diff <= - 1 * abs(considerable_amount) and group_key in not_present_in_flows_ids:
+            just_payed.add(group_key)
+        
+
+    return list(just_payed)
