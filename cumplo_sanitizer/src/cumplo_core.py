@@ -22,7 +22,7 @@ def find_negative_earning_ids(movs: pd.DataFrame) -> list[str]:
 
 
 # Get rates from a collection/df of movements...
-def get_rates(
+def _get_rates(
     flows: pd.DataFrame,
 ) -> (Optional[int], Optional[float], Optional[float], Optional[float]):
     diff_days = 0
@@ -167,7 +167,7 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
         )
 
         # Get rates!
-        diff_days, mtasa_iir, tasa_iir_yr, tasa_xir = get_rates(selected_group)
+        diff_days, mtasa_iir, tasa_iir_yr, tasa_xir = _get_rates(selected_group)
         # and display them!
         result_label = f"Days:[{diff_days}]"
         result_label += f" - Rate : [{mtasa_iir * 100:.2f}%]" if mtasa_iir is not None else ""
