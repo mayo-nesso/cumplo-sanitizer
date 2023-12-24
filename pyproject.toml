@@ -18,6 +18,7 @@ ipywidgets = "7.7.2"
 xlrd = "^2.0.1"
 itables = "^1.6.2"
 pyarrow = "^13.0.0"
+pytest = "^7.4.3"
 
 
 [tool.poetry.group.dev.dependencies]
