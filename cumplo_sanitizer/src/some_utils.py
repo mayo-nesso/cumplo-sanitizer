@@ -1,3 +1,4 @@
+import datetime
 import os
 
 import pandas as pd
@@ -156,6 +157,10 @@ def clean_spanish_characters(sp_str: str) -> str:
     >>> clean_spanish_characters("Álvaro y María")
     'alvaro y maria'
     """
+    # Skip NaN elements...
+    if pd.isna(sp_str):
+        return sp_str
+
     # Convert `sp_str` to a string to ensure it's treated as a string even if it's not initially.
     sp_str = str(sp_str)
 
@@ -172,3 +177,47 @@ def clean_spanish_characters(sp_str: str) -> str:
     sp_str = sp_str.replace("ñ", "n")
 
     return sp_str
+
+
+def is_date_past_grace_period(grace_period_days, date):
+    """
+    Check if a given date is past a specified grace period.
+
+    Parameters
+    ----------
+    grace_period_days : int
+        The number of days that form the grace period. Should be a non-negative integer.
+    date : datetime.date
+        The date to be compared with the current date.
+
+    Returns
+    -------
+    bool
+        True if the difference between the current date and the given date is greater
+        than the grace period, False otherwise.
+
+    Raises
+    ------
+    ValueError
+        If grace_period_days is negative or not an integer.
+    TypeError
+        If the date is not a datetime.date object.
+
+    Examples
+    --------
+    >>> is_date_past_grace_period(10, datetime(2023, 4, 1).date())
+    True or False, depending on the current date.
+
+    """
+
+    # Validate grace_period_days
+    if not isinstance(grace_period_days, int) or grace_period_days < 0:
+        raise ValueError("grace_period_days should be a non-negative integer")
+
+    # Validate date
+    if not isinstance(date, datetime.date):
+        raise TypeError("date should be a datetime.date object")
+
+    # Calculate if the date is past the grace period
+    is_past_grace_period = (datetime.datetime.now().date() - date.date()).days > grace_period_days
+    return is_past_grace_period

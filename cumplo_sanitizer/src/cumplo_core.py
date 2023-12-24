@@ -1,12 +1,16 @@
 import csv
-from datetime import datetime
 from typing import Optional
 
 import ipywidgets as widgets
 import openpyxl
 import pandas as pd
+
+# import some_utils
 from IPython.display import display
 from pyxirr import InvalidPaymentsError, xirr
+
+# from cumplo_sanitizer.src import some_utils ## works for tests but it doesnt work for jypyter!!
+from . import some_utils
 
 
 def find_negative_earning_ids(movs: pd.DataFrame) -> list[str]:
@@ -48,43 +52,45 @@ def get_rates(
     return (diff_days, mrate_iir, rate_iir_yr, rate_xir)
 
 
+def _create_return_row(r_id: str, actor: str, date: str, abono: str, cargo: str) -> dict:
+    row = {
+        "Fecha": pd.Timestamp(date),
+        "Cargo": int(cargo),
+        "Abono": int(abono),
+        "Descripción": f"fix_ Pago de inversión, solicitud Credito {actor} {r_id}",
+        "Tipo": "Fix",
+        "Solicitud": f"Credito {actor} {r_id}",
+        "RemateID": r_id,
+        "Actor": actor,
+    }
+    return row
+
+
+def _get_fix_data(fixdata_csv_path: str) -> list[str]:
+    fix_data = []
+    with open(fixdata_csv_path, newline="") as csv_file:
+        csv_reader = csv.reader(csv_file)
+
+        # read header...
+        _ = next(csv_reader, None)
+
+        # Read all the fixes and store them on fix_data
+        for row in csv_reader:
+            fix_data.append(row)
+    return fix_data
+
+
 # fix missing elements discovered by browsing records...
 def insert_fix(original_df: pd.DataFrame, fixdata_csv_path: str) -> pd.DataFrame:
-    def create_return_row(r_id: str, actor: str, date: str, abono: str, cargo: str) -> dict:
-        row = {
-            "Fecha": pd.Timestamp(date),
-            "Cargo": int(cargo),
-            "Abono": int(abono),
-            "Descripción": f"fix_ Pago de inversión, solicitud Credito {actor} {r_id}",
-            "Tipo": "Fix",
-            "Solicitud": f"Credito {actor} {r_id}",
-            "RemateID": r_id,
-            "Actor": actor,
-        }
-        return row
-
-    def get_fix_data(fixdata_csv_path: str) -> list[str]:
-        fix_data = []
-        with open(fixdata_csv_path, newline="") as csv_file:
-            csv_reader = csv.reader(csv_file)
-
-            # read header...
-            _ = next(csv_reader, None)
-
-            # Read all the fixes and store them on fix_data
-            for row in csv_reader:
-                fix_data.append(row)
-        return fix_data
-
     if fixdata_csv_path is None:
         print("No fixdata csv path specified. No changes made.")
         return original_df
 
-    fix_data = get_fix_data(fixdata_csv_path)
+    fix_data = _get_fix_data(fixdata_csv_path)
 
     new_rows = []
     for data in fix_data:
-        row = create_return_row(data[0], data[1], data[2], data[3], data[4])
+        row = _create_return_row(data[0], data[1], data[2], data[3], data[4])
         new_rows.append(row)
 
     fixes_df = pd.DataFrame(new_rows)
@@ -249,7 +255,7 @@ def extract_active_and_late_ids(
 
                 # Check the date!
                 date = sheet.cell(row=1, column=column).value
-                is_uncollectible = (datetime.now().date() - date.date()).days > grace_period_days
+                is_uncollectible = some_utils.is_date_past_grace_period(grace_period_days, date)
 
                 if is_uncollectible:
                     uncollectible_ids.add(id)
@@ -261,7 +267,9 @@ def extract_active_and_late_ids(
 
 
 # Extract all those ids where the diff of Abonos and Cargos is less or equal than 'despreciable_amount'
-def extract_unexecuted(df: pd.DataFrame, not_present_in_flows_ids: list[str], despreciable_amount: int) -> list[str]:
+def extract_unexecuted(
+    df: pd.DataFrame, not_present_in_flows_ids: list[str], despreciable_amount: int
+) -> list[str]:
     dfg = df.groupby("RemateID")
 
     unexecuted_ids = set()
@@ -270,7 +278,10 @@ def extract_unexecuted(df: pd.DataFrame, not_present_in_flows_ids: list[str], de
         cost = df_group["Cargo"].sum()
         investment_diff = earnings - cost
 
-        if abs(investment_diff) <= despreciable_amount or group_key in not_present_in_flows_ids:
+        if (
+            abs(investment_diff) <= abs(despreciable_amount)
+            or group_key in not_present_in_flows_ids
+        ):
             unexecuted_ids.add(group_key)
         elif (
             df_group["Descripción"]
@@ -282,8 +293,9 @@ def extract_unexecuted(df: pd.DataFrame, not_present_in_flows_ids: list[str], de
     return list(unexecuted_ids)
 
 
-
-def extract_just_payed(df: pd.DataFrame, not_present_in_flows_ids: list[str], considerable_amount: int) -> list[str]:
+def extract_just_payed(
+    df: pd.DataFrame, not_present_in_flows_ids: list[str], considerable_amount: int
+) -> list[str]:
     dfg = df.groupby("RemateID")
 
     just_payed = set()
@@ -292,8 +304,31 @@ def extract_just_payed(df: pd.DataFrame, not_present_in_flows_ids: list[str], co
         cost = df_group["Cargo"].sum()
         investment_diff = earnings - cost
 
-        if investment_diff <= - 1 * abs(considerable_amount) and group_key in not_present_in_flows_ids:
+        if (
+            investment_diff <= -1 * abs(considerable_amount)
+            and group_key in not_present_in_flows_ids
+        ):
             just_payed.add(group_key)
-        
 
     return list(just_payed)
+
+
+def extract_uncollectibles(df: pd.DataFrame, grace_period_days: int) -> list[str]:
+    uncollectible_ids = set()
+
+    dfg = df.groupby("RemateID")
+    for group_key, df_group in dfg:
+        earnings = df_group["Abono"].sum()
+        cost = df_group["Cargo"].sum()
+        date = df_group["Fecha"].max()
+
+        investment_diff = earnings - cost
+
+        if investment_diff <= -1 * abs(1000) and some_utils.is_date_past_grace_period(
+            grace_period_days, date
+        ):
+            uncollectible_ids.add(group_key)
+
+    # negative_investments
+
+    return list(uncollectible_ids)
