@@ -239,7 +239,7 @@ def extract_active_and_late_ids(
                 continue
 
             # get row-investment_id
-            id = str(sheet.cell(row=row, column=1).value)
+            id = str(int(sheet.cell(row=row, column=1).value))
 
             # store this id in the all_ids set...
             all_ids.add(id)
