@@ -14,6 +14,36 @@ from . import some_utils
 
 
 def find_negative_earning_ids(movs: pd.DataFrame) -> list[str]:
+    """
+    Identify and return a list of IDs with negative earnings.
+
+    This function filters through a DataFrame of financial movements and identifies
+    those entities (grouped by 'RemateID') whose total 'Abono' minus 'Cargo' results in a
+    negative value, indicating negative earnings.
+
+    Parameters
+    ----------
+    movs : pd.DataFrame
+        A DataFrame containing financial movements. It should have at least the
+        following columns: 'RemateID', 'Abono', and 'Cargo'.
+        - 'RemateID' is an identifier for the entity.
+        - 'Abono' represents credits to the account.
+        - 'Cargo' represents debits from the account.
+
+    Returns
+    -------
+    list[str]
+        A list of 'RemateID' values corresponding to those entities with negative earnings.
+
+    Examples
+    --------
+    >>> data = {'RemateID': ['A', 'A', 'B', 'B'],
+                'Abono': [100, 200, 300, 400],
+                'Cargo': [300, 100, 200, 500]}
+    >>> df = pd.DataFrame(data)
+    >>> find_negative_earning_ids(df)
+    ['B']
+    """
     # Filter records where total_earnings is negative
     negative_investments = movs.groupby("RemateID").apply(
         lambda group: group["Abono"].sum() - group["Cargo"].sum() < 0
@@ -82,6 +112,43 @@ def _get_fix_data(fixdata_csv_path: str) -> list[str]:
 
 # fix missing elements discovered by browsing records...
 def insert_fix(original_df: pd.DataFrame, fixdata_csv_path: str) -> pd.DataFrame:
+    """
+    Insert additional rows into a DataFrame from a CSV file.
+
+    This function reads data from a specified CSV file and appends each row as a new
+    entry into the original DataFrame. The data from the CSV file is processed by
+    the '_create_return_row' function for each row before being appended.
+
+    Parameters
+    ----------
+    original_df : pd.DataFrame
+        The original DataFrame to which the new rows will be appended.
+
+    fixdata_csv_path : str
+        The file path to the CSV file containing the data to be inserted.
+        If this is None, the function will return the original DataFrame unchanged.
+
+    Returns
+    -------
+    pd.DataFrame
+        A new DataFrame consisting of the original DataFrame with the additional
+        rows appended from the CSV file. If no CSV path is provided, returns the
+        original DataFrame unmodified.
+
+    Notes
+    -----
+    - This function relies on '_get_fix_data' to read the CSV file and
+      '_create_return_row' to process each row from the CSV file.
+    - If 'fixdata_csv_path' is None, the function prints a message and returns
+      the original DataFrame without any modifications.
+
+    Examples
+    --------
+    >>> original_data = {'col1': [1, 2], 'col2': [3, 4]}
+    >>> original_df = pd.DataFrame(original_data)
+    >>> insert_fix(original_df, 'path/to/fixdata.csv')
+    # Returns a DataFrame with rows from 'fixdata.csv' appended to 'original_df'.
+    """
     if fixdata_csv_path is None:
         print("No fixdata csv path specified. No changes made.")
         return original_df
@@ -100,6 +167,40 @@ def insert_fix(original_df: pd.DataFrame, fixdata_csv_path: str) -> pd.DataFrame
 
 
 def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
+    """
+    Interactive exploration of a DataFrame filtered by specific IDs.
+
+    This function allows for the interactive exploration of a given DataFrame,
+    with the option to filter the data by a list of IDs. It displays the data
+    for each ID along with calculated statistics and allows navigation between
+    different IDs using widgets.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to be explored. It should contain a column 'RemateID'.
+
+    filter_by_ids : list[str], optional
+        A list of 'RemateID' values to filter the DataFrame.
+        If None (default), no filtering is applied.
+
+    Notes
+    -----
+    - The function relies on ipywidgets for the interactive components and
+      assumes it is being used within an IPython or Jupyter environment.
+    - 'RemateID' is used as the key for grouping and filtering the DataFrame.
+    - The function utilizes the '_get_rates' function to calculate rates for each group.
+
+    Examples
+    --------
+    >>> data = {'RemateID': ['ID1', 'ID1', 'ID2'],
+                'Fecha': ['2023-01-01', '2023-01-02', '2023-01-03'],
+                'Abono': [100, 200, 300],
+                'Cargo': [50, 60, 70]}
+    >>> df = pd.DataFrame(data)
+    >>> explore_by_id(df, filter_by_ids=['ID1', 'ID2'])
+    # This will display interactive widgets for exploring IDs 'ID1' and 'ID2'.
+    """
     if filter_by_ids is not None:
         mask = df["RemateID"].isin(filter_by_ids)
         df = df[mask]
@@ -190,13 +291,52 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
     widgets.interact(_interactive_df, index_text_value=index_text)
 
 
-# Analize flows file line by line, and extract: active, late, and uncollectible ids
-# Active means at least one flow in gray (text color = gray)
-# Late  means at least one flow in red (text color = red)
-# uncollectible are all those investments that have a pending flow older than 'grace_period_days'
 def extract_active_and_late_ids(
     flows_file_path: str, grace_period_days
 ) -> (list[str], list[str], list[str], list[str]):
+    """
+    Analyze a spreadsheet of financial flows and categorize investments based on their status.
+
+    The function reads from an Excel file, identifying investments as 'active', 'late',
+    or 'uncollectible' based on their payment status, which is indicated by the text color
+    in the spreadsheet. It categorizes investments into these groups and returns lists
+    of IDs for each category.
+
+    Parameters
+    ----------
+    flows_file_path : str
+        The path to the Excel file containing the flow data.
+
+    grace_period_days : int
+        The number of days to use as the grace period when determining if an investment
+        is uncollectible.
+
+    Returns
+    -------
+    tuple of list[str]
+        A tuple containing four lists:
+        1. All investment IDs found in the document.
+        2. IDs of active investments (payments expected in the future).
+        3. IDs of late investments (payments overdue but not yet declared uncollectible).
+        4. IDs of uncollectible investments (payments overdue beyond the grace period).
+
+    Notes
+    -----
+    - This function relies on the 'openpyxl' library to read the Excel file.
+    - The function uses the 'is_date_past_grace_period' method from 'some_utils'
+      to determine if an investment is uncollectible.
+    - Text colors in the spreadsheet are used to determine the status of payments:
+      'gray' for active, 'red' for late, and other colors are not considered in this context.
+
+    Examples
+    --------
+    >>> extract_active_and_late_ids('path/to/flows.xlsx', 30)
+    # Returns four lists of investment IDs categorized as all, active, late, and uncollectible.
+    """
+    # Active means at least one flow in gray (text color = gray)
+    # Late  means at least one flow in red (text color = red)
+    # uncollectible are all those investments that have a 'late' flow older than 'grace_period_days'
+
     # Colors and meaning !!
     c_red = "FFCE494F"  # red | pending!!
     c_gray = "FF808080"  # gray | expected, future payment
@@ -266,10 +406,41 @@ def extract_active_and_late_ids(
     return (list(all_ids), list(active_ids), list(late_ids), list(uncollectible_ids))
 
 
-# Extract all those ids where the diff of Abonos and Cargos is less or equal than 'despreciable_amount'
-def extract_unexecuted(
-    df: pd.DataFrame, not_present_in_flows_ids: list[str], despreciable_amount: int
-) -> list[str]:
+def extract_unexecuted(df: pd.DataFrame, despreciable_amount: int) -> list[str]:
+    """
+    Extract investment IDs where the net investment (Abonos minus Cargos) is less or
+    equal than 'despreciable_amount'
+
+    This function processes a DataFrame of investment data, grouping by 'RemateID'. It identifies
+    investments where the difference between total earnings ('Abono') and total cost ('Cargo')
+    is less than or equal to a specified 'despreciable_amount'
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing investment data. Expected to have columns 'RemateID',
+        'Abono', 'Cargo', and 'Descripción'.
+
+    despreciable_amount : int
+        The threshold amount below which the difference between earnings and cost is
+        considered negligible.
+
+    Returns
+    -------
+    list[str]
+        List of 'RemateID's where the net investment is less than or equal to the
+        despreciable amount
+
+    Examples
+    --------
+    >>> data = {'RemateID': ['ID1', 'ID2'],
+                'Abono': [1000, 50],
+                'Cargo': [980, 60],
+                'Descripción': ['Investment', 'Devolución de fondos por crédito no concretado']}
+    >>> df = pd.DataFrame(data)
+    >>> extract_unexecuted(df, 50)
+    # Returns a list of IDs, including 'ID2'.
+    """
     dfg = df.groupby("RemateID")
 
     unexecuted_ids = set()
@@ -278,10 +449,7 @@ def extract_unexecuted(
         cost = df_group["Cargo"].sum()
         investment_diff = earnings - cost
 
-        if (
-            abs(investment_diff) <= abs(despreciable_amount)
-            or group_key in not_present_in_flows_ids
-        ):
+        if abs(investment_diff) <= abs(despreciable_amount):
             unexecuted_ids.add(group_key)
         elif (
             df_group["Descripción"]
@@ -296,7 +464,45 @@ def extract_unexecuted(
 def extract_just_payed(
     df: pd.DataFrame, not_present_in_flows_ids: list[str], considerable_amount: int
 ) -> list[str]:
-    dfg = df.groupby("RemateID")
+    """
+    Extract IDs of investments that have recently been paid off, based on a specified amount.
+
+    This function filters the DataFrame for specific investment IDs and then groups
+    it by 'RemateID'. It identifies those investments where the difference between
+    total earnings ('Abono') and total cost ('Cargo') is less than or equal to
+    the negative of a given 'considerable_amount'. Only investments listed in
+    'not_present_in_flows_ids' are considered.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing investment data. Expected to have columns 'RemateID',
+        'Abono', and 'Cargo'.
+
+    not_present_in_flows_ids : list[str]
+        List of 'RemateID's to be considered for identifying if just paid.
+
+    considerable_amount : int
+        The threshold amount that, when the negative of investment's net difference
+        (earnings minus cost) is equal or greater, identifies the investment as just paid.
+
+    Returns
+    -------
+    list[str]
+        List of 'RemateID's identified as just paid based on the criteria.
+
+    Examples
+    --------
+    >>> data = {'RemateID': ['ID1', 'ID2'],
+                'Abono': [1000, 50],
+                'Cargo': [1500, 40]}
+    >>> df = pd.DataFrame(data)
+    >>> extract_just_payed(df, ['ID1', 'ID2'], 400)
+    # Returns ['ID1'] since its net investment difference is more than 400 in the negative.
+    """
+    df_not_in_flows = df[df["RemateID"].isin(not_present_in_flows_ids)]
+
+    dfg = df_not_in_flows.groupby("RemateID")
 
     just_payed = set()
     for group_key, df_group in dfg:
@@ -304,16 +510,46 @@ def extract_just_payed(
         cost = df_group["Cargo"].sum()
         investment_diff = earnings - cost
 
-        if (
-            investment_diff <= -1 * abs(considerable_amount)
-            and group_key in not_present_in_flows_ids
-        ):
+        if investment_diff <= -1 * abs(considerable_amount):
             just_payed.add(group_key)
 
     return list(just_payed)
 
 
 def extract_uncollectibles(df: pd.DataFrame, grace_period_days: int) -> list[str]:
+    """
+    Extracts IDs of investments considered uncollectible based on earnings, costs, and grace period.
+
+    This function groups a DataFrame by 'RemateID' and determines if each grouped investment
+    is uncollectible. An investment is considered uncollectible if the difference between
+    its total earnings ('Abono') and total costs ('Cargo') is negative beyond a certain threshold,
+    and the latest date ('Fecha') of the group's records is past the specified grace period.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing investment data, with columns 'RemateID', 'Abono', 'Cargo',
+        and 'Fecha'.
+
+    grace_period_days : int
+        The number of days defining the grace period. Investments with their latest date beyond
+        this period are considered for being marked as uncollectible.
+
+    Returns
+    -------
+    list[str]
+        A list of 'RemateID's that are considered uncollectible based on the specified criteria.
+
+    Examples
+    --------
+    >>> data = {'RemateID': ['ID1', 'ID2'],
+                'Abono': [500, 50],
+                'Cargo': [1500, 100],
+                'Fecha': [pd.Timestamp('2023-01-01'), pd.Timestamp('2023-06-01')]}
+    >>> df = pd.DataFrame(data)
+    >>> extract_uncollectibles(df, 30)
+    # Returns a list of IDs which are considered uncollectible.
+    """
     uncollectible_ids = set()
 
     dfg = df.groupby("RemateID")
