@@ -161,8 +161,11 @@ def insert_fix(original_df: pd.DataFrame, fixdata_csv_path: str) -> pd.DataFrame
         new_rows.append(row)
 
     fixes_df = pd.DataFrame(new_rows)
+    fixes_abono = fixes_df["Abono"].sum()
+    print(f"Fixing {len(fixes_df)} rows, For a total of ${fixes_abono:,} ")
     new_df = pd.concat([original_df, fixes_df])
     new_df = new_df.reset_index(drop=True)
+
     return new_df
 
 
