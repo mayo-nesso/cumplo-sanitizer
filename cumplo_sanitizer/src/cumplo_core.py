@@ -201,9 +201,12 @@ def explore_by_id(df: pd.DataFrame, filter_by_ids: list[str] = None):
     >>> explore_by_id(df, filter_by_ids=['ID1', 'ID2'])
     # This will display interactive widgets for exploring IDs 'ID1' and 'ID2'.
     """
-    if filter_by_ids is not None:
-        mask = df["RemateID"].isin(filter_by_ids)
-        df = df[mask]
+    if filter_by_ids is None or len(filter_by_ids) == 0:
+        print("filter_by_ids is None or empty... - Aborting...")
+        return
+
+    mask = df["RemateID"].isin(filter_by_ids)
+    df = df[mask]
 
     dfg = df.groupby("RemateID")
 
